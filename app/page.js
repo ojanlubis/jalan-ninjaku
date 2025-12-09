@@ -1,0 +1,97 @@
+'use client'
+
+import { useState } from 'react'
+
+export default function Home() {
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return
+
+    const userMessage = input.trim()
+    setInput('')
+    setError(null)
+    
+    // Add user message to chat
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setLoading(true)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Something went wrong')
+      }
+
+      // Add Claude's response to chat
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+
+  return (
+    <div className="container">
+      <h1>🍥 Simple Claude Chat</h1>
+      
+      <div className="chat-box">
+        {messages.length === 0 && (
+          <p style={{ color: '#666', textAlign: 'center', marginTop: '50px' }}>
+            Ketik sesuatu untuk mulai chat dengan Claude...
+          </p>
+        )}
+        
+        {messages.map((msg, i) => (
+          <div key={i} className={`message ${msg.role}-message`}>
+            <strong>{msg.role === 'user' ? 'Lo' : 'Claude'}:</strong>
+            <p style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+          </div>
+        ))}
+        
+        {loading && (
+          <div className="message assistant-message loading">
+            Claude lagi mikir...
+          </div>
+        )}
+        
+        {error && (
+          <div className="error">
+            Error: {error}
+          </div>
+        )}
+      </div>
+
+      <div className="input-area">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Ketik pesan lo di sini..."
+          disabled={loading}
+        />
+        <button onClick={sendMessage} disabled={loading}>
+          {loading ? '...' : 'Kirim'}
+        </button>
+      </div>
+    </div>
+  )
+}
