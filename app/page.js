@@ -1,12 +1,37 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
 
 export default function Home() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const sessionIdRef = useRef(null)
+
+  // Generate or retrieve session ID on mount
+  useEffect(() => {
+    let sessionId = sessionStorage.getItem('chat_session_id')
+    if (!sessionId) {
+      sessionId = crypto.randomUUID()
+      sessionStorage.setItem('chat_session_id', sessionId)
+    }
+    sessionIdRef.current = sessionId
+  }, [])
+
+  // Save a message to Supabase
+  const saveMessage = async (role, content) => {
+    try {
+      await supabase.from('messages').insert({
+        session_id: sessionIdRef.current,
+        role,
+        content
+      })
+    } catch (err) {
+      console.error('Failed to save message:', err)
+    }
+  }
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return
@@ -20,6 +45,9 @@ export default function Home() {
     const updatedMessages = [...messages, newUserMessage]
     setMessages(updatedMessages)
     setLoading(true)
+
+    // Save user message to Supabase
+    saveMessage('user', userMessage)
 
     try {
       // Send full conversation history to API
@@ -37,6 +65,9 @@ export default function Home() {
 
       // Add Claude's response to chat
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+
+      // Save assistant message to Supabase
+      saveMessage('assistant', data.response)
     } catch (err) {
       setError(err.message)
     } finally {
