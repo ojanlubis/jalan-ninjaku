@@ -53,7 +53,7 @@ export default function Home() {
 
   return (
     <div className="container">
-      <h1>🍥 Simple Claude Chat</h1>
+      <h1>🍥 Jalan Ninjaku</h1>
       
       <div className="chat-box">
         {messages.length === 0 && (
