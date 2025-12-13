@@ -36,19 +36,20 @@ THINGS TO AVOID:
 
 export async function POST(request) {
   try {
-    const { message } = await request.json()
+    const { messages } = await request.json()
 
-    if (!message) {
-      return Response.json({ error: 'Message is required' }, { status: 400 })
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return Response.json({ error: 'Messages array is required' }, { status: 400 })
     }
+
+    // Limit to last 10 messages to control token costs
+    const recentMessages = messages.slice(-10)
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: systemPrompt,
-      messages: [
-        { role: 'user', content: message }
-      ]
+      messages: recentMessages
     })
 
     // Extract text from response
