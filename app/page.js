@@ -14,16 +14,19 @@ export default function Home() {
     const userMessage = input.trim()
     setInput('')
     setError(null)
-    
+
     // Add user message to chat
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    const newUserMessage = { role: 'user', content: userMessage }
+    const updatedMessages = [...messages, newUserMessage]
+    setMessages(updatedMessages)
     setLoading(true)
 
     try {
+      // Send full conversation history to API
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
+        body: JSON.stringify({ messages: updatedMessages })
       })
 
       const data = await response.json()
