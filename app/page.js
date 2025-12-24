@@ -8,7 +8,9 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [streamingContent, setStreamingContent] = useState('')
   const sessionIdRef = useRef(null)
+  const chatBoxRef = useRef(null)
 
   // Generate or retrieve session ID on mount
   useEffect(() => {
@@ -19,6 +21,13 @@ export default function Home() {
     }
     sessionIdRef.current = sessionId
   }, [])
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (chatBoxRef.current) {
+      chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight
+    }
+  }, [messages, streamingContent])
 
   // Save a message to Supabase
   const saveMessage = async (role, content) => {
@@ -39,6 +48,7 @@ export default function Home() {
     const userMessage = input.trim()
     setInput('')
     setError(null)
+    setStreamingContent('')
 
     // Add user message to chat
     const newUserMessage = { role: 'user', content: userMessage }
@@ -50,24 +60,51 @@ export default function Home() {
     saveMessage('user', userMessage)
 
     try {
-      // Send full conversation history to API
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: updatedMessages })
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
+        const data = await response.json()
         throw new Error(data.error || 'Something went wrong')
       }
 
-      // Add Claude's response to chat
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
+      // Handle streaming response
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let fullContent = ''
 
-      // Save assistant message to Supabase
-      saveMessage('assistant', data.response)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              // Streaming complete, add final message
+              setMessages(prev => [...prev, { role: 'assistant', content: fullContent }])
+              setStreamingContent('')
+              saveMessage('assistant', fullContent)
+            } else {
+              try {
+                const parsed = JSON.parse(data)
+                if (parsed.text) {
+                  fullContent += parsed.text
+                  setStreamingContent(fullContent)
+                }
+              } catch (e) {
+                // Ignore parse errors for incomplete chunks
+              }
+            }
+          }
+        }
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -84,31 +121,59 @@ export default function Home() {
 
   return (
     <div className="container">
-      <h1>🍥 Jalan Ninjaku</h1>
-      
-      <div className="chat-box">
-        {messages.length === 0 && (
-          <p style={{ color: '#666', textAlign: 'center', marginTop: '50px' }}>
-            Ketik sesuatu untuk mulai chat dengan Claude...
-          </p>
+      <header className="header">
+        <h1>jalanninjaku</h1>
+        <p className="tagline">Ngobrol soal kerjaan, usaha, arah hidup</p>
+      </header>
+
+      <div className="chat-box" ref={chatBoxRef}>
+        {messages.length === 0 && !streamingContent && (
+          <div className="welcome-section">
+            <div className="welcome-card">
+              <p className="welcome-text">
+                Hai! Gue di sini buat nemenin lo ngobrol soal kerjaan, usaha, atau arah hidup.
+                Bukan sebagai coach atau konsultan — lebih kayak temen yang kebetulan udah liat
+                banyak jalan orang dan bisa bantu lo mikirin jalan lo sendiri.
+              </p>
+              <p className="welcome-text">
+                Lo bisa cerita apa aja — lagi bingung mau kemana, stuck di kerjaan,
+                mau mulai usaha, atau cuma butuh perspektif lain. Gue dengerin dulu,
+                baru kita obrolin bareng.
+              </p>
+              <p className="welcome-hint">
+                Mulai aja cerita, gak usah formal.
+              </p>
+            </div>
+          </div>
         )}
-        
+
         {messages.map((msg, i) => (
           <div key={i} className={`message ${msg.role}-message`}>
-            <strong>{msg.role === 'user' ? 'Lo' : 'Claude'}:</strong>
-            <p style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>{msg.content}</p>
+            <div className="message-label">{msg.role === 'user' ? 'Lo' : 'Gue'}</div>
+            <p className="message-content">{msg.content}</p>
           </div>
         ))}
-        
-        {loading && (
-          <div className="message assistant-message loading">
-            Claude lagi mikir...
+
+        {streamingContent && (
+          <div className="message assistant-message">
+            <div className="message-label">Gue</div>
+            <p className="message-content">{streamingContent}</p>
           </div>
         )}
-        
+
+        {loading && !streamingContent && (
+          <div className="message assistant-message typing">
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="error">
-            Error: {error}
+            Waduh, ada masalah: {error}
           </div>
         )}
       </div>
@@ -119,11 +184,11 @@ export default function Home() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="Ketik pesan lo di sini..."
+          placeholder="Cerita aja..."
           disabled={loading}
         />
         <button onClick={sendMessage} disabled={loading}>
-          {loading ? '...' : 'Kirim'}
+          Kirim
         </button>
       </div>
     </div>

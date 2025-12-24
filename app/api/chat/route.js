@@ -25,17 +25,46 @@ export async function POST(request) {
     // Limit to last 10 messages to control token costs
     const recentMessages = messages.slice(-10)
 
-    const response = await client.messages.create({
+    // Create streaming response with caching enabled for system prompt
+    const stream = await client.messages.stream({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
-      system: systemPrompt,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }
+        }
+      ],
       messages: recentMessages
     })
 
-    // Extract text from response
-    const assistantMessage = response.content[0].text
+    // Create a ReadableStream to send chunks to the client
+    const encoder = new TextEncoder()
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of stream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              const chunk = event.delta.text
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: chunk })}\n\n`))
+            }
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        } catch (error) {
+          controller.error(error)
+        }
+      }
+    })
 
-    return Response.json({ response: assistantMessage })
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
   } catch (error) {
     console.error('Claude API error:', error)
     return Response.json(
