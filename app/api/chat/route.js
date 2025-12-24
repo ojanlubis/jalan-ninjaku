@@ -28,8 +28,8 @@ export async function POST(request) {
 
     // Create streaming response with caching enabled for system prompt
     const stream = await client.messages.stream({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      model: 'claude-opus-4-5-20251101',
+      max_tokens: 1440,
       system: [
         {
           type: 'text',
